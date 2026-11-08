@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Cobros BCV</title>
+  <style>
+    :root { --primary: #0066cc; --bg: #f4f6f9; --card: #ffffff; --text: #1e293b; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+    .header { background: var(--primary); color: white; padding: 16px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .tasa-box { display: flex; gap: 8px; align-items: center; margin-top: 10px; background: rgba(255,255,255,0.15); padding: 10px; border-radius: 8px; }
+    .tasa-box input { width: 100px; padding: 6px; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
+    .btn { background: #10b981; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .btn-sm { padding: 6px 10px; font-size: 13px; border-radius: 6px; border: none; color: white; cursor: pointer; }
+    .card { background: var(--card); padding: 16px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    input, select { width: 100%; padding: 10px; margin: 6px 0 12px 0; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+    .deuda-item { border-left: 5px solid var(--primary); position: relative; }
+    .alta { border-left-color: #ef4444; }
+    .media { border-left-color: #f59e0b; }
+    .baja { border-left-color: #10b981; }
+    .acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .monto-actual { font-size: 20px; font-weight: bold; color: var(--primary); }
+    .detalle { font-size: 13px; color: #64748b; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2 style="margin:0;">💵 Mis Cobros BCV</h2>
+    <div class="tasa-box">
+      <span>Tasa BCV hoy (Bs):</span>
+      <input type="number" id="tasaActual" step="0.01" placeholder="Ej: 45.50">
+      <button class="btn" onclick="actualizarTasa()">Actualizar</button>
+    </div>
+    <small id="estadoApi" style="display:block; margin-top:6px; opacity:0.9;">Cargando tasa BCV...</small>
+  </div>
+
+  <!-- Formulario para agregar o editar -->
+  <div class="card">
+    <h3 id="tituloForm" style="margin-top:0;">Nueva Cuenta por Cobrar</h3>
+    <input type="hidden" id="editIndex" value="-1">
+    <input type="text" id="nombre" placeholder="Nombre de la persona (Ej: Carlos Pérez)">
+    <input type="number" id="montoBs" step="0.01" placeholder="Monto que te debe hoy en Bs">
+    <select id="prioridad">
+      <option value="alta">🔴 Prioridad Alta</option>
+      <option value="media" selected>🟡 Prioridad Media</option>
+      <option value="baja">🟢 Prioridad Baja</option>
+    </select>
+    <label style="font-size:13px; color:#64748b;">⏰ Recordatorio / Alarma (opcional):</label>
+    <input type="datetime-local" id="alarma">
+    <button class="btn" style="width:100%; padding:12px; font-size:16px;" onclick="guardarDeuda()">Guardar Cobro</button>
+  </div>
+
+  <!-- Lista de deudores -->
+  <div id="listaDeudas"></div>
+
+  <script>
+    let deudas = JSON.parse(localStorage.getItem('deudas_bcv')) || [];
+    let tasaBcv = parseFloat(localStorage.getItem('tasa_bcv')) || 0;
+
+    // Pedir permiso de notificaciones al abrir
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
+    // Intentar obtener tasa BCV automática al iniciar
+    async function obtenerTasaAutomatica() {
+      try {
+        const res = await fetch('https://dolarapi.com');
+        const data = await res.json();
+        if (data && data.promedio) {
+          tasaBcv = parseFloat(data.promedio.toFixed(2));
+          localStorage.setItem('tasa_bcv', tasaBcv);
+          document.getElementById('estadoApi').innerText = "✅ Tasa BCV actualizada automáticamente";
+        }
+      } catch (e) {
+        document.getElementById('estadoApi').innerText = "⚠️ Modo sin conexión: usa tu última tasa guardada o edítala";
+      }
+      document.getElementById('tasaActual').value = tasaBcv || '';
+      renderizar();
+    }
+
+    function actualizarTasa() {
+      const nueva = parseFloat(document.getElementById('tasaActual').value);
+      if (nueva > 0) {
+        tasaBcv = nueva;
+        localStorage.setItem('tasa_bcv', tasaBcv);
+        renderizar();
+        alert("Tasa actualizada a " + tasaBcv + " Bs/$. Todos los montos se han recalculado.");
+      }
+    }
+
+    function guardarDeuda() {
+      const nombre = document.getElementById('nombre').value.trim();
+      const montoBs = parseFloat(document.getElementById('montoBs').value);
+      const prioridad = document.getElementById('prioridad').value;
+      const alarma = document.getElementById('alarma').value;
+      const editIndex = parseInt(document.getElementById('editIndex').value);
+
+      if (!nombre || !montoBs || tasaBcv <= 0) {
+        alert("Por favor ingresa nombre, monto en Bs y asegúrate de tener una tasa BCV válida.");
+        return;
+      }
+
+      // Guardamos el equivalente en dólares según la tasa del momento
+      const montoUsd = montoBs / tasaBcv;
+      const fechaHoy = new Date().toLocaleDateString('es-VE');
+
+      const registro = {
+        nombre,
+        montoInicialBs: montoBs,
+        tasaInicial: tasaBcv,
+        montoUsd,
+        fecha: editIndex >= 0 ? deudas[editIndex].fecha : fechaHoy,
+        prioridad,
+        alarma,
+        notificado: false
+      };
+
+      if (editIndex >= 0) {
+        deudas[editIndex] = registro;
+        document.getElementById('editIndex').value = "-1";
+        document.getElementById('tituloForm').innerText = "Nueva Cuenta por Cobrar";
+      } else {
+        deudas.push(registro);
+      }
+
+      limpiarFormulario();
+      guardarYRenderizar();
+    }
+
+    function limpiarFormulario() {
+      document.getElementById('nombre').value = '';
+      document.getElementById('montoBs').value = '';
+      document.getElementById('alarma').value = '';
+    }
+
+    function editarDeuda(index) {
+      const d = deudas[index];
+      document.getElementById('nombre').value = d.nombre;
+      document.getElementById('montoBs').value = (d.montoUsd * tasaBcv).toFixed(2);
+      document.getElementById('prioridad').value = d.prioridad;
+      document.getElementById('alarma').value = d.alarma || '';
+      document.getElementById('editIndex').value = index;
+      document.getElementById('tituloForm').innerText = "✏️ Editando a " + d.nombre;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function borrarDeuda(index) {
+      if (confirm("¿Seguro que quieres borrar este cobro?")) {
+        deudas.splice(index, 1);
+        guardarYRenderizar();
+      }
+    }
+
+    function mover(index, direccion) {
+      const nuevoIndex = index + direccion;
+      if (nuevoIndex < 0 || nuevoIndex >= deudas.length) return;
+      const temp = deudas[index];
+      deudas[index] = deudas[nuevoIndex];
+      deudas[nuevoIndex] = temp;
+      guardarYRenderizar();
+    }
+
+    function guardarYRenderizar() {
+      localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+      renderizar();
+    }
+
+    function renderizar() {
+      const contenedor = document.getElementById('listaDeudas');
+      contenedor.innerHTML = '';
+
+      deudas.forEach((d, i) => {
+        const valorActualBs = (d.montoUsd * tasaBcv).toFixed(2);
+        const div = document.createElement('div');
+        div.className = `card deuda-item ${d.prioridad}`;
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${d.nombre}</strong>
+            <span class="monto-actual">${valorActualBs} Bs</span>
+          </div>
+          <div class="detalle">
+            Equivalente: <b>$${d.montoUsd.toFixed(2)}</b> | Anotado el ${d.fecha} (${d.montoInicialBs} Bs a tasa ${d.tasaInicial})
+            ${d.alarma ? `<br>⏰ Alarma: ${d.alarma.replace('T', ' ')}` : ''}
+          </div>
+          <div class="acciones">
+            <button class="btn-sm" style="background:#3b82f6;" onclick="editarDeuda(${i})">✏️ Editar</button>
+            <button class="btn-sm" style="background:#64748b;" onclick="mover(${i}, -1)">⬆️ Subir</button>
+            <button class="btn-sm" style="background:#64748b;" onclick="mover(${i}, 1)">⬇️ Bajar</button>
+            <button class="btn-sm" style="background:#ef4444;" onclick="borrarDeuda(${i})">🗑️ Borrar</button>
+          </div>
+        `;
+        contenedor.appendChild(div);
+      });
+    }
+
+    // Revisar alarmas cada 15 segundos
+    setInterval(() => {
+      const ahora = new Date();
+      deudas.forEach((d, i) => {
+        if (d.alarma && !d.notificado) {
+          const fechaAlarma = new Date(d.alarma);
+          if (ahora >= fechaAlarma) {
+            d.notificado = true;
+            guardarYRenderizar();
+            const monto = (d.montoUsd * tasaBcv).toFixed(2);
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("⏰ Recordatorio de Cobro BCV", {
+                body: `${d.nombre} te debe ${monto} Bs ($${d.montoUsd.toFixed(2)})`
+              });
+            } else {
+              alert(`⏰ RECORDATORIO: ${d.nombre} te debe ${monto} Bs ($${d.montoUsd.toFixed(2)})`);
+            }
+          }
+        }
+      });
+    }, 15000);
+
+    obtenerTasaAutomatica();
+  </script>
+</body>
+</html>
