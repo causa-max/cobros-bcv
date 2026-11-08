@@ -302,4 +302,28 @@
 
     setInterval(() => {
       const ahora = new Date();
-    
+          deudas.forEach((d) => {
+        if (d.alarma && !d.notificado) {
+          const fechaAlarma = new Date(d.alarma);
+          if (ahora >= fechaAlarma) {
+            d.notificado = true;
+            guardarYRenderizar();
+            sonarAlarma();
+            const monto = (d.montoUsd * tasaBcv).toFixed(2);
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("⏰ Recordatorio de Cobro BCV", {
+                body: `${d.nombre} te debe ${monto} Bs ($${d.montoUsd.toFixed(2)})`
+              });
+            } else {
+              alert(`⏰ RECORDATORIO: ${d.nombre} te debe ${monto} Bs ($${d.montoUsd.toFixed(2)})`);
+            }
+          }
+        }
+      });
+    }, 15000);
+
+    obtenerTasaAutomatica();
+  </script>
+</body>
+</html>
+
