@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Control de Cobros BCV</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root { --primary: #dc2626; --dark: #991b1b; --bg: #0a0a0a; --card: #141414; --text: #f5f5f5; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+    .header { background: linear-gradient(135deg, #1a0505, var(--dark)); border: 1px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 16px; }
+    .tasa-box { display: flex; gap: 8px; align-items: center; margin-top: 10px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; }
+    .tasa-box input { width: 100px; padding: 6px; margin: 0; background: #0a0a0a; color: #fff; border: 1px solid var(--primary); border-radius: 6px; font-weight: bold; font-size: 16px; }
+    .btn { background: var(--primary); color: #fff; border: none; padding: 10px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .btn-sm { padding: 6px 10px; font-size: 13px; border-radius: 6px; border: 1px solid #333; color: #fff; cursor: pointer; }
+    .card { background: var(--card); border: 1px solid #262626; padding: 16px; border-radius: 12px; margin-bottom: 12px; }
+    input, select { width: 100%; padding: 11px; margin: 6px 0 12px 0; background: #0a0a0a; color: var(--text); border: 1px solid #333; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+    input:focus, select:focus { outline: none; border-color: var(--primary); }
+    .deuda-item { border-left: 5px solid var(--primary); }
+    .alta { border-left-color: #ef4444; }
+    .media { border-left-color: #f59e0b; }
+    .baja { border-left-color: #22c55e; }
+    .acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2 style="margin:0;">💵 Mis Cobros BCV</h2>
+    <div class="tasa-box">
+      <span>Tasa BCV:</span>
+      <input type="number" id="tasaActual" step="0.01" placeholder="Ej: 45.50">
+      <button class="btn" onclick="actualizarTasa()">Actualizar</button>
+    </div>
+    <small id="estadoApi" style="display:block; margin-top:8px; color:#fca5a5;">Cargando tasa...</small>
+  </div>
+
+  <div class="card">
+    <h3 id="tituloForm" style="margin-top:0; color:#f87171;">Nueva Cuenta por Cobrar</h3>
+    <input type="hidden" id="editIndex" value="-1">
+    <input type="text" id="nombre" placeholder="Nombre de la persona (Ej: Alejandro)">
+    <input type="number" id="montoBs" step="0.01" placeholder="Monto en Bs hoy">
+    <select id="prioridad">
+      <option value="alta">🔴 Prioridad Alta</option>
+      <option value="media" selected>🟡 Prioridad Media</option>
+      <option value="baja">🟢 Prioridad Baja</option>
+    </select>
+    <label style="font-size:13px; color:#a3a3a3;">⏰ Alarma (opcional):</label>
+    <input type="datetime-local" id="alarma">
+    <button class="btn" style="width:100%; font-size:16px;" onclick="guardarDeuda()">Guardar Cobro</button>
+  </div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px 0; border-bottom:1px solid var(--primary); padding-bottom:6px;">
+    <h3 style="margin:0; color:#f87171;">📋 Personas que me deben</h3>
+    <span id="totalGeneral" style="font-size:13px; color:#fca5a5; font-weight:bold;">Total: 0.00 Bs</span>
+  </div>
+  <div id="listaDeudas"></div>
+
+  <script>
+    let deudas = JSON.parse(localStorage.getItem('deudas_bcv')) || [];
+    let tasaBcv = parseFloat(localStorage.getItem('tasa_bcv')) || 0;
+
+    async function cargarTasa() {
+      try {
+        const r = await fetch('https://vercel.app');
+        const d = await r.json();
+        if (d && d.monedas && d.monedas.usd && d.monedas.usd.promedio) {
+          tasaBcv = parseFloat(d.monedas.usd.promedio.toFixed(2));
+          localStorage.setItem('tasa_bcv', tasaBcv);
+          document.getElementById('estadoApi').innerText = "✅ Tasa BCV actualizada automáticamente";
+          document.getElementById('estadoApi').style.color = "#22c55e";
+        } else {
+          throw new Error();
+        }
+      } catch (e) {
+        document.getElementById('estadoApi').innerText = "⚠️ Modo manual: escribe la tasa arriba";
+        document.getElementById('estadoApi').style.color = "#f59e0b";
+      }
+      document.getElementById('tasaActual').value = tasaBcv || '';
+      mostrar();
+    }
+
+    function actualizarTasa() {
+      const n = parseFloat(document.getElementById('tasaActual').value);
+      if (n > 0) {
+        tasaBcv = n;
+        localStorage.setItem('tasa_bcv', tasaBcv);
+        document.getElementById('estadoApi').innerText = "✅ Tasa manual fijada en " + tasaBcv + " Bs/$";
+        document.getElementById('estadoApi').style.color = "#22c55e";
+        mostrar();
+      }
+    }
+
+    function guardarDeuda() {
+      const nombre = document.getElementById('nombre').value.trim();
+      const montoBs = parseFloat(document.getElementById('montoBs').value);
+      const prioridad = document.getElementById('prioridad').value;
+      const alarma = document.getElementById('alarma').value;
+      const idx = parseInt(document.getElementById('editIndex').value);
+      const tInput = parseFloat(document.getElementById('tasaActual').value);
+      if (tInput > 0) { tasaBcv = tInput; localStorage.setItem('tasa_bcv', tasaBcv); }
+
+      if (!nombre || !montoBs || tasaBcv <= 0) {
+        alert("Completa nombre, monto en Bs y tasa BCV.");
+        return;
+      }
+
+      const item = {
+        nombre,
+        montoInicialBs: montoBs,
+        tasaInicial: tasaBcv,
+        montoUsd: montoBs / tasaBcv,
+        fecha: idx >= 0 ? deudas[idx].fecha : new Date().toLocaleDateString('es-VE'),
+        prioridad,
+        alarma,
+        notificado: false
+      };
+
+      if (idx >= 0) {
+        deudas[idx] = item;
+        document.getElementById('editIndex').value = "-1";
+        document.getElementById('tituloForm').innerText = "Nueva Cuenta por Cobrar";
+      } else {
+        deudas.push(item);
+      }
+
+      document.getElementById('nombre').value = '';
+      document.getElementById('montoBs').value = '';
+      document.getElementById('alarma').value = '';
+      localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+      mostrar();
+    }
+
+    function editar(i) {
+      const d = deudas[i];
+      document.getElementById('nombre').value = d.nombre;
+      document.getElementById('montoBs').value = (d.montoUsd * tasaBcv).toFixed(2);
+      document.getElementById('prioridad').value = d.prioridad;
+      document.getElementById('alarma').value = d.alarma || '';
+      document.getElementById('editIndex').value = i;
+      document.getElementById('tituloForm').innerText = "✏️ Editando a " + d.nombre;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function borrar(i) {
+      if (confirm("¿Borrar este cobro?")) {
+        deudas.splice(i, 1);
+        localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+        mostrar();
+      }
+    }
+
+    function mover(i, dir) {
+      const n = i + dir;
+      if (n < 0 || n >= deudas.length) return;
+      [deudas[i], deudas[n]] = [deudas[n], deudas[i]];
+      localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+      mostrar();
+    }
+
+    function mostrar() {
+      const box = document.getElementById('listaDeudas');
+      box.innerHTML = '';
+      let totBs = 0, totUsd = 0;
+
+      if (deudas.length === 0) {
+        box.innerHTML = '<div class="card" style="text-align:center; color:#a3a3a3;">No hay personas anotadas aún.</div>';
+        document.getElementById('totalGeneral').innerText = 'Total: 0.00 Bs';
+        return;
+      }
+
+      deudas.forEach((d, i) => {
+        const bs = d.montoUsd * tasaBcv;
+        totBs += bs; totUsd += d.montoUsd;
+        const div = document.createElement('div');
+        div.className = `card deuda-item ${d.prioridad}`;
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${d.nombre}</strong>
+            <span style="font-size:19px; font-weight:bold; color:#f87171;">${bs.toFixed(2)} Bs</span>
+          </div>
+          <div style="font-size:13px; color:#a3a3a3; margin-top:4px;">
+            Valor: <b style="color:#fff;">$${d.montoUsd.toFixed(2)}</b> | ${d.fecha} (${d.montoInicialBs} Bs a ${d.tasaInicial})
+            ${d.alarma ? `<br>⏰ Alarma: ${d.alarma.replace('T', ' ')}` : ''}
+          </div>
+          <div class="acciones">
+            <button class="btn-sm" style="background:#991b1b;" onclick="editar(${i})">✏️ Editar</button>
+            <button class="btn-sm" style="background:#262626;" onclick="mover(${i}, -1)">⬆️ Subir</button>
+            <button class="btn-sm" style="background:#262626;" onclick="mover(${i}, 1)">⬇️ Bajar</button>
+            <button class="btn-sm" style="background:#dc2626;" onclick="borrar(${i})">🗑️ Borrar</button>
+          </div>
+        `;
+        box.appendChild(div);
+      });
+      document.getElementById('totalGeneral').innerText = `Total: ${totBs.toFixed(2)} Bs ($${totUsd.toFixed(2)})`;
+    }
+
+    setInterval(() => {
+      const ahora = new Date();
+      deudas.forEach((d) => {
+        if (d.alarma && !d.notificado && ahora >= new Date(d.alarma)) {
+          d.notificado = true;
+          localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+          mostrar();
+          alert(`⏰ RECORDATORIO: ${d.nombre} te debe ${(d.montoUsd * tasaBcv).toFixed(2)} Bs ($${d.montoUsd.toFixed(2)})`);
+        }
+      });
+    }, 15000);
+
+    cargarTasa();
+  </script>
+</body>
+</html>
+  
