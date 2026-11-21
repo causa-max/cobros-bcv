@@ -84,7 +84,7 @@
       } catch (e) {}
     }
 
-    async function sincronizarTasa() {
+        async function sincronizarTasa() {
       const est = document.getElementById('estadoApi');
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
       mostrar();
@@ -95,38 +95,48 @@
         return;
       }
 
-      est.innerText = "🔄 Buscando tasa BCV en línea...";
+      est.innerText = "🔄 Buscando tasa BCV...";
       est.style.color = "#fca5a5";
 
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 4500);
-
-      try {
-        let nueva = 0;
-        try {
-          const r1 = await fetch('https://dolarapi.com', { signal: ctrl.signal });
-          const d1 = await r1.json();
-          if (d1 && d1.promedio > 0) nueva = parseFloat(d1.promedio.toFixed(2));
-        } catch (e) {
-          const r2 = await fetch('https://er-api.com', { signal: ctrl.signal });
-          const d2 = await r2.json();
-          if (d2 && d2.rates && d2.rates.VES > 0) nueva = parseFloat(d2.rates.VES.toFixed(2));
+      const fuentes = [
+        async () => {
+          const r = await fetch('https://jsdelivr.net');
+          const d = await r.json();
+          return d && d.usd && d.usd.ves ? parseFloat(d.usd.ves) : 0;
+        },
+        async () => {
+          const r = await fetch('https://dolarapi.com');
+          const d = await r.json();
+          return d && d.promedio ? parseFloat(d.promedio) : 0;
+        },
+        async () => {
+          const r = await fetch('https://er-api.com');
+          const d = await r.json();
+          return d && d.rates && d.rates.VES ? parseFloat(d.rates.VES) : 0;
         }
-        clearTimeout(timer);
+      ];
 
-        if (nueva > 0) {
-          tasaBcv = nueva;
-          localStorage.setItem('tasa_bcv', tasaBcv);
-          document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
-          est.innerText = "✅ Tasa BCV actualizada automáticamente";
-          est.style.color = "#22c55e";
-          mostrar();
-        } else { throw new Error(); }
-      } catch (e) {
-        est.innerText = "⚠️ Modo manual activo (sin respuesta de red)";
+      let nueva = 0;
+      for (const consultar of fuentes) {
+        try {
+          const val = await consultar();
+          if (val > 0) { nueva = parseFloat(val.toFixed(2)); break; }
+        } catch (e) {}
+      }
+
+      if (nueva > 0) {
+        tasaBcv = nueva;
+        localStorage.setItem('tasa_bcv', tasaBcv);
+        document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
+        est.innerText = "✅ Tasa BCV actualizada automáticamente";
+        est.style.color = "#22c55e";
+        mostrar();
+      } else {
+        est.innerText = "⚠️ Modo manual activo (sin respuesta de API)";
         est.style.color = "#f59e0b";
       }
     }
+
 
     window.addEventListener('online', sincronizarTasa);
     window.addEventListener('offline', () => {
