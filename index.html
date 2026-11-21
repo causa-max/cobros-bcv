@@ -126,8 +126,7 @@
       }
       mostrar();
     }
-
-    async function sincronizarTasa() {
+        async function sincronizarTasa() {
       const est = document.getElementById('estadoApi');
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
       mostrar();
@@ -138,31 +137,41 @@
         return;
       }
 
-      est.innerText = "🔄 Consultando tasa en vivo...";
+      est.innerText = "🔄 Consultando tasa BCV oficial...";
       est.style.color = "#fca5a5";
 
-      const url1 = 'https://' + 'latest.currency-api.pages.dev' + '/v1/currencies/usd.min.json';
-      const url2 = 'https://' + '://dolarapi.com' + '/v1/dolares/oficial';
+      const antiCache = '?t=' + Date.now();
+      const urlBcv = 'https://' + '://dolarapi.com' + '/v1/dolares/oficial' + antiCache;
+      const urlRespaldo = 'https://' + 'latest.currency-api.pages.dev' + '/v1/currencies/usd.min.json' + antiCache;
 
-      const p1 = fetch(url1)
-        .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
-        .then(d => (d && d.usd && d.usd.ves > 0) ? parseFloat(d.usd.ves) : Promise.reject('Sin VES'));
-
-      const p2 = fetch(url2)
-        .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
-        .then(d => (d && d.promedio > 0) ? parseFloat(d.promedio) : Promise.reject('Sin dato'));
-
+      let nueva = 0;
       try {
-        const nueva = await Promise.any([p1, p2]);
+        const r1 = await fetch(urlBcv, { cache: 'no-store' });
+        if (r1.ok) {
+          const d1 = await r1.json();
+          if (d1 && d1.promedio > 0) nueva = parseFloat(d1.promedio);
+        }
+      } catch (e) {}
+
+      if (nueva <= 0) {
+        try {
+          const r2 = await fetch(urlRespaldo, { cache: 'no-store' });
+          if (r2.ok) {
+            const d2 = await r2.json();
+            if (d2 && d2.usd && d2.usd.ves > 0) nueva = parseFloat(d2.usd.ves);
+          }
+        } catch (e) {}
+      }
+
+      if (nueva > 0) {
         tasaBcv = parseFloat(nueva.toFixed(2));
         localStorage.setItem('tasa_bcv', tasaBcv);
         document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
-        est.innerText = "✅ Tasa actualizada automáticamente";
+        est.innerText = "✅ Tasa BCV oficial al día (" + fmtBs(tasaBcv) + ")";
         est.style.color = "#22c55e";
         mostrar();
-      } catch (err) {
-        const det = err.errors ? err.errors.join(' | ') : (err.message || 'Sin red');
-        est.innerText = "⚠️ Modo manual (" + det + ")";
+      } else {
+        est.innerText = "⚠️ Modo manual activo (sin respuesta BCV)";
         est.style.color = "#f59e0b";
       }
     }
