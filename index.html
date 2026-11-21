@@ -126,7 +126,7 @@
       }
       mostrar();
     }
-                async function sincronizarTasa() {
+                    async function sincronizarTasa() {
       const est = document.getElementById('estadoApi');
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
       mostrar();
@@ -137,36 +137,40 @@
         return;
       }
 
-      est.innerText = "🔄 Sincronizando tasa BCV...";
+      est.innerText = "🔄 Consultando BCV oficial (hasta 12s)...";
       est.style.color = "#fca5a5";
 
-      const fetchConTiempo = (url, ms = 3500) => {
+      const fetchConTiempo = (url, ms = 12000) => {
         const c = new AbortController();
         const id = setTimeout(() => c.abort(), ms);
         return fetch(url, { signal: c.signal, cache: 'no-store' }).finally(() => clearTimeout(id));
       };
 
+      const extraerBcv = (html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const nodo = doc.querySelector('#dolar strong');
+        const val = nodo ? parseFloat(nodo.textContent.trim().replace(/\./g, '').replace(',', '.')) : 0;
+        return val > 0 ? val : Promise.reject();
+      };
+
       const bcvUrl = 'https://' + 'www.bcv.org.ve' + '/';
 
-      const pBcvDirecto = fetchConTiempo('https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(bcvUrl), 4000)
-        .then(r => r.ok ? r.text() : Promise.reject())
-        .then(html => {
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const nodo = doc.querySelector('#dolar strong');
-          const val = nodo ? parseFloat(nodo.textContent.trim().replace(/\./g, '').replace(',', '.')) : 0;
-          return val > 0 ? val : Promise.reject();
-        });
+      const pBcv1 = fetchConTiempo('https://' + 'api.allorigins.win' + '/raw?url=' + encodeURIComponent(bcvUrl) + '&t=' + Date.now())
+        .then(r => r.ok ? r.text() : Promise.reject()).then(extraerBcv);
 
-      const pApiBcv1 = fetchConTiempo('https://' + 'bcv-api.rafnixg.dev' + '/rates/', 4000)
+      const pBcv2 = fetchConTiempo('https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(bcvUrl))
+        .then(r => r.ok ? r.text() : Promise.reject()).then(extraerBcv);
+
+      const pApi1 = fetchConTiempo('https://' + 'bcv-api.rafnixg.dev' + '/rates/', 8000)
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => (d && d.dollar > 0) ? parseFloat(d.dollar) : Promise.reject());
 
-      const pApiBcv2 = fetchConTiempo('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), 4000)
+      const pApi2 = fetchConTiempo('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), 8000)
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => (d && d.promedio > 0) ? parseFloat(d.promedio) : Promise.reject());
 
       try {
-        const nueva = await Promise.any([pBcvDirecto, pApiBcv1, pApiBcv2]);
+        const nueva = await Promise.any([pBcv1, pBcv2, pApi1, pApi2]);
         tasaBcv = parseFloat(nueva.toFixed(2));
         localStorage.setItem('tasa_bcv', tasaBcv);
         document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
@@ -174,7 +178,7 @@
         est.style.color = "#22c55e";
         mostrar();
       } catch (e) {
-        est.innerText = "⚠️ Sin respuesta BCV en 4s: usa Fijar arriba";
+        est.innerText = "⚠️ Sin respuesta BCV: usa Fijar arriba";
         est.style.color = "#f59e0b";
       }
     }
