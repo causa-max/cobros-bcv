@@ -211,3 +211,23 @@
         box.appendChild(div);
       });
       document.getElementById('totalGeneral').innerText = "Total: " + fmtBs(totBs) + " (" + fmtUsd(totUsd) + ")";
+    }
+
+    setInterval(() => {
+      const ahora = new Date();
+      deudas.forEach((d) => {
+        if (d.alarma && !d.notificado && ahora >= new Date(d.alarma)) {
+          d.notificado = true;
+          localStorage.setItem('deudas_bcv', JSON.stringify(deudas));
+          mostrar();
+          sonar();
+          alert("⏰ RECORDATORIO: " + d.nombre + " te debe " + fmtBs(d.montoUsd * tasaBcv) + " (" + fmtUsd(d.montoUsd) + ")");
+        }
+      });
+    }, 10000);
+
+    document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
+    mostrar();
+  </script>
+</body>
+</html>
