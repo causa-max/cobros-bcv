@@ -35,14 +35,40 @@
   </style>
 </head>
 <body>
-  <div class="header">
-    <h2 style="margin:0;">💵 Control BCV</h2>
-    <div class="tasa-box">
-      <span>Tasa BCV:</span>
-      <input type="text" inputmode="decimal" id="tasaActual" placeholder="Ej: 54,50">
-      <button type="button" class="btn" id="btnTasa">Fijar</button>
-      <button type="button" class="btn" id="btnSync" style="background:#262626; border:1px solid var(--p);">🔄</button>
-            <a href="https://www.bcv.org.ve" target="_blank" class="btn" style="background:#262626; border:1px solid var(--p); text-decoration:none;">🌐</a>
+    <div class="header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="margin:0;">💵 Control BCV</h2>
+      <button type="button" class="btn" id="btnMenuTasa" onclick="toggleMenuTasa()" style="background:#0a0a0a; border:1px solid var(--p); font-size:15px;">
+        🇻🇪 <span id="tasaHeaderTxt">919,82 Bs</span> ▼
+      </button>
+    </div>
+
+    <div id="panelTasas" style="display:none; margin-top:12px; background:#0f0f0f; border:1px solid #333; border-radius:10px; padding:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <small style="color:#a3a3a3; font-weight:bold;">TASA DE REFERENCIA</small>
+        <button type="button" class="btn-sm" id="btnSync" style="background:#262626; border-color:var(--p);">🔄 Actualizar</button>
+      </div>
+
+      <div onclick="elegirRef('bcv')" id="optBcv" style="display:flex; justify-content:space-between; padding:10px; border-radius:8px; background:#1e3a8a; border:1px solid #3b82f6; margin-bottom:6px; cursor:pointer;">
+        <span>🇻🇪 Dólar BCV</span>
+        <strong id="valBcv">919,82 Bs</strong>
+      </div>
+
+      <div onclick="elegirRef('eur')" id="optEur" style="display:flex; justify-content:space-between; padding:10px; border-radius:8px; background:#1a1a1a; border:1px solid #333; margin-bottom:6px; cursor:pointer;">
+        <span>🇪🇺 Euro BCV</span>
+        <strong id="valEur">1.011,17 Bs</strong>
+      </div>
+
+      <div onclick="elegirRef('usdt')" id="optUsdt" style="display:flex; justify-content:space-between; padding:10px; border-radius:8px; background:#1a1a1a; border:1px solid #333; margin-bottom:10px; cursor:pointer;">
+        <span>💲 USDT</span>
+        <strong id="valUsdt">1.083,00 Bs</strong>
+      </div>
+
+      <small style="color:#a3a3a3; display:block; margin-bottom:4px;">TASA PERSONALIZADA</small>
+      <div style="display:flex; gap:8px;">
+        <input type="text" inputmode="decimal" id="tasaActual" placeholder="Ej: 919,82" style="margin:0; padding:8px; text-align:center; font-weight:bold;">
+        <button type="button" class="btn" id="btnTasa">Fijar</button>
+      </div>
     </div>
     <small id="estadoApi" style="display:block; margin-top:8px; color:#fca5a5;">Iniciando...</small>
   </div>
@@ -127,9 +153,44 @@
       }
       mostrar();
     }
-                    async function sincronizarTasa() {
-      const est = document.getElementById('estadoApi');
+                        let tasasRef = JSON.parse(localStorage.getItem('tasas_ref_bcv')) || { bcv: 919.82, eur: 1011.17, usdt: 1083.00 };
+    let tipoTasa = localStorage.getItem('tipo_tasa_bcv') || 'bcv';
+
+    function toggleMenuTasa() {
+      const p = document.getElementById('panelTasas');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function actualizarVistaTasas() {
+      document.getElementById('valBcv').innerText = fmtBs(tasasRef.bcv);
+      document.getElementById('valEur').innerText = fmtBs(tasasRef.eur);
+      document.getElementById('valUsdt').innerText = fmtBs(tasasRef.usdt);
+      document.getElementById('tasaHeaderTxt').innerText = fmtBs(tasaBcv);
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
+
+      ['bcv', 'eur', 'usdt'].forEach(k => {
+        const el = document.getElementById('opt' + k.charAt(0).toUpperCase() + k.slice(1));
+        if (el) {
+          el.style.background = (tipoTasa === k) ? '#1e3a8a' : '#1a1a1a';
+          el.style.borderColor = (tipoTasa === k) ? '#3b82f6' : '#333';
+        }
+      });
+    }
+
+    function elegirRef(tipo) {
+      tipoTasa = tipo;
+      tasaBcv = tasasRef[tipo];
+      localStorage.setItem('tipo_tasa_bcv', tipoTasa);
+      localStorage.setItem('tasa_bcv', tasaBcv);
+      actualizarVistaTasas();
+      mostrar();
+      document.getElementById('estadoApi').innerText = "✅ Usando tasa " + tipo.toUpperCase() + " (" + fmtBs(tasaBcv) + ")";
+      document.getElementById('estadoApi').style.color = "#22c55e";
+    }
+
+    async function sincronizarTasa() {
+      const est = document.getElementById('estadoApi');
+      actualizarVistaTasas();
       mostrar();
 
       if (!navigator.onLine) {
@@ -138,52 +199,40 @@
         return;
       }
 
-      est.innerText = "🔄 Consultando BCV oficial (hasta 12s)...";
+      est.innerText = "🔄 Sincronizando tasas de referencia...";
       est.style.color = "#fca5a5";
 
-      const fetchConTiempo = (url, ms = 12000) => {
-        const c = new AbortController();
-        const id = setTimeout(() => c.abort(), ms);
-        return fetch(url, { signal: c.signal, cache: 'no-store' }).finally(() => clearTimeout(id));
-      };
-
-      const extraerBcv = (html) => {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const nodo = doc.querySelector('#dolar strong');
-        const val = nodo ? parseFloat(nodo.textContent.trim().replace(/\./g, '').replace(',', '.')) : 0;
-        return val > 0 ? val : Promise.reject();
-      };
-
-      const bcvUrl = 'https://' + 'www.bcv.org.ve' + '/';
-
-      const pBcv1 = fetchConTiempo('https://' + 'api.allorigins.win' + '/raw?url=' + encodeURIComponent(bcvUrl) + '&t=' + Date.now())
-        .then(r => r.ok ? r.text() : Promise.reject()).then(extraerBcv);
-
-      const pBcv2 = fetchConTiempo('https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(bcvUrl))
-        .then(r => r.ok ? r.text() : Promise.reject()).then(extraerBcv);
-
-      const pApi1 = fetchConTiempo('https://' + 'bcv-api.rafnixg.dev' + '/rates/', 8000)
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => (d && d.dollar > 0) ? parseFloat(d.dollar) : Promise.reject());
-
-      const pApi2 = fetchConTiempo('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), 8000)
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => (d && d.promedio > 0) ? parseFloat(d.promedio) : Promise.reject());
-
       try {
-        const nueva = await Promise.any([pBcv1, pBcv2, pApi1, pApi2]);
-        tasaBcv = parseFloat(nueva.toFixed(2));
-        localStorage.setItem('tasa_bcv', tasaBcv);
-        document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
-        est.innerText = "✅ Tasa BCV actualizada (" + fmtBs(tasaBcv) + ")";
+        const r = await fetch('https://' + '://dolarapi.com' + '/v1/dolares?t=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const lista = await r.json();
+
+        const ofi = lista.find(x => x.fuente === 'oficial');
+        const par = lista.find(x => x.fuente === 'paralelo');
+
+        if (ofi && ofi.promedio > 0) {
+          tasasRef.bcv = parseFloat(ofi.promedio.toFixed(2));
+          tasasRef.eur = parseFloat((tasasRef.bcv * 1.0993).toFixed(2));
+        }
+        if (par && par.promedio > 0) {
+          tasasRef.usdt = parseFloat(par.promedio.toFixed(2));
+        }
+
+        localStorage.setItem('tasas_ref_bcv', JSON.stringify(tasasRef));
+        if (tasasRef[tipoTasa]) {
+          tasaBcv = tasasRef[tipoTasa];
+          localStorage.setItem('tasa_bcv', tasaBcv);
+        }
+        actualizarVistaTasas();
+        est.innerText = "✅ Tasas actualizadas en línea (" + fmtBs(tasaBcv) + ")";
         est.style.color = "#22c55e";
         mostrar();
       } catch (e) {
-        est.innerText = "⚠️ Sin respuesta BCV: usa Fijar arriba";
+        est.innerText = "⚠️ Modo manual activo (usa Fijar en el menú)";
         est.style.color = "#f59e0b";
       }
     }
-   
+
     window.addEventListener('online', sincronizarTasa);
     window.addEventListener('offline', () => {
       document.getElementById('estadoApi').innerText = "📴 Modo sin conexión activado";
@@ -194,13 +243,17 @@
     document.getElementById('btnTasa').addEventListener('click', function() {
       const n = leerNum('tasaActual');
       if (n > 0) {
+        tipoTasa = 'custom';
         tasaBcv = n;
+        localStorage.setItem('tipo_tasa_bcv', 'custom');
         localStorage.setItem('tasa_bcv', tasaBcv);
-        document.getElementById('estadoApi').innerText = "✅ Tasa fijada manualmente: " + fmtBs(tasaBcv);
+        actualizarVistaTasas();
+        document.getElementById('estadoApi').innerText = "✅ Tasa personalizada fijada: " + fmtBs(tasaBcv);
         document.getElementById('estadoApi').style.color = "#22c55e";
         mostrar();
       } else { alert("Escribe una tasa válida."); }
     });
+   
          document.getElementById('btnGuardar').addEventListener('click', function() {
       const lista = listaActiva();
       const nombre = document.getElementById('nombre').value.trim();
