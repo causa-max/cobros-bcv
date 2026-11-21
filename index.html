@@ -126,7 +126,7 @@
       }
       mostrar();
     }
-        async function sincronizarTasa() {
+            async function sincronizarTasa() {
       const est = document.getElementById('estadoApi');
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
       mostrar();
@@ -137,28 +137,41 @@
         return;
       }
 
-      est.innerText = "🔄 Consultando tasa BCV oficial...";
+      est.innerText = "🔄 Leyendo página oficial del BCV...";
       est.style.color = "#fca5a5";
 
-      const antiCache = '?t=' + Date.now();
-      const urlBcv = 'https://' + '://dolarapi.com' + '/v1/dolares/oficial' + antiCache;
-      const urlRespaldo = 'https://' + 'latest.currency-api.pages.dev' + '/v1/currencies/usd.min.json' + antiCache;
+      const urlBcvOficial = 'https://' + 'www.bcv.org.ve' + '/';
+      const proxies = [
+        'https://' + 'api.allorigins.win' + '/raw?url=' + encodeURIComponent(urlBcvOficial) + '&t=' + Date.now(),
+        'https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(urlBcvOficial)
+      ];
 
       let nueva = 0;
-      try {
-        const r1 = await fetch(urlBcv, { cache: 'no-store' });
-        if (r1.ok) {
-          const d1 = await r1.json();
-          if (d1 && d1.promedio > 0) nueva = parseFloat(d1.promedio);
-        }
-      } catch (e) {}
 
+      // 1. Intenta extraer el valor directo desde el HTML oficial del BCV
+      for (const proxy of proxies) {
+        try {
+          const r = await fetch(proxy, { cache: 'no-store' });
+          if (r.ok) {
+            const html = await r.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const nodoDolar = doc.querySelector('#dolar strong');
+            if (nodoDolar) {
+              const limpio = nodoDolar.textContent.trim().replace(/\./g, '').replace(',', '.');
+              const val = parseFloat(limpio);
+              if (val > 0) { nueva = val; break; }
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 2. Respaldo secundario si el portal del BCV está en mantenimiento
       if (nueva <= 0) {
         try {
-          const r2 = await fetch(urlRespaldo, { cache: 'no-store' });
+          const r2 = await fetch('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), { cache: 'no-store' });
           if (r2.ok) {
             const d2 = await r2.json();
-            if (d2 && d2.usd && d2.usd.ves > 0) nueva = parseFloat(d2.usd.ves);
+            if (d2 && d2.promedio > 0) nueva = parseFloat(d2.promedio);
           }
         } catch (e) {}
       }
@@ -167,15 +180,15 @@
         tasaBcv = parseFloat(nueva.toFixed(2));
         localStorage.setItem('tasa_bcv', tasaBcv);
         document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
-        est.innerText = "✅ Tasa BCV oficial al día (" + fmtBs(tasaBcv) + ")";
+        est.innerText = "✅ Tasa oficial BCV sincronizada (" + fmtBs(tasaBcv) + ")";
         est.style.color = "#22c55e";
         mostrar();
       } else {
-        est.innerText = "⚠️ Modo manual activo (sin respuesta BCV)";
+        est.innerText = "⚠️ Modo manual activo (sin respuesta del BCV)";
         est.style.color = "#f59e0b";
       }
     }
-
+   
     window.addEventListener('online', sincronizarTasa);
     window.addEventListener('offline', () => {
       document.getElementById('estadoApi').innerText = "📴 Modo sin conexión activado";
