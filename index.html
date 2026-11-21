@@ -126,7 +126,7 @@
       }
       mostrar();
     }
-            async function sincronizarTasa() {
+                async function sincronizarTasa() {
       const est = document.getElementById('estadoApi');
       document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
       mostrar();
@@ -137,54 +137,44 @@
         return;
       }
 
-      est.innerText = "🔄 Leyendo página oficial del BCV...";
+      est.innerText = "🔄 Sincronizando tasa BCV...";
       est.style.color = "#fca5a5";
 
-      const urlBcvOficial = 'https://' + 'www.bcv.org.ve' + '/';
-      const proxies = [
-        'https://' + 'api.allorigins.win' + '/raw?url=' + encodeURIComponent(urlBcvOficial) + '&t=' + Date.now(),
-        'https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(urlBcvOficial)
-      ];
+      const fetchConTiempo = (url, ms = 3500) => {
+        const c = new AbortController();
+        const id = setTimeout(() => c.abort(), ms);
+        return fetch(url, { signal: c.signal, cache: 'no-store' }).finally(() => clearTimeout(id));
+      };
 
-      let nueva = 0;
+      const bcvUrl = 'https://' + 'www.bcv.org.ve' + '/';
 
-      // 1. Intenta extraer el valor directo desde el HTML oficial del BCV
-      for (const proxy of proxies) {
-        try {
-          const r = await fetch(proxy, { cache: 'no-store' });
-          if (r.ok) {
-            const html = await r.text();
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            const nodoDolar = doc.querySelector('#dolar strong');
-            if (nodoDolar) {
-              const limpio = nodoDolar.textContent.trim().replace(/\./g, '').replace(',', '.');
-              const val = parseFloat(limpio);
-              if (val > 0) { nueva = val; break; }
-            }
-          }
-        } catch (e) {}
-      }
+      const pBcvDirecto = fetchConTiempo('https://' + '://codetabs.com' + '/v1/proxy?quest=' + encodeURIComponent(bcvUrl), 4000)
+        .then(r => r.ok ? r.text() : Promise.reject())
+        .then(html => {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const nodo = doc.querySelector('#dolar strong');
+          const val = nodo ? parseFloat(nodo.textContent.trim().replace(/\./g, '').replace(',', '.')) : 0;
+          return val > 0 ? val : Promise.reject();
+        });
 
-      // 2. Respaldo secundario si el portal del BCV está en mantenimiento
-      if (nueva <= 0) {
-        try {
-          const r2 = await fetch('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), { cache: 'no-store' });
-          if (r2.ok) {
-            const d2 = await r2.json();
-            if (d2 && d2.promedio > 0) nueva = parseFloat(d2.promedio);
-          }
-        } catch (e) {}
-      }
+      const pApiBcv1 = fetchConTiempo('https://' + 'bcv-api.rafnixg.dev' + '/rates/', 4000)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => (d && d.dollar > 0) ? parseFloat(d.dollar) : Promise.reject());
 
-      if (nueva > 0) {
+      const pApiBcv2 = fetchConTiempo('https://' + '://dolarapi.com' + '/v1/dolares/oficial?t=' + Date.now(), 4000)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => (d && d.promedio > 0) ? parseFloat(d.promedio) : Promise.reject());
+
+      try {
+        const nueva = await Promise.any([pBcvDirecto, pApiBcv1, pApiBcv2]);
         tasaBcv = parseFloat(nueva.toFixed(2));
         localStorage.setItem('tasa_bcv', tasaBcv);
         document.getElementById('tasaActual').value = tasaBcv.toFixed(2).replace('.', ',');
-        est.innerText = "✅ Tasa oficial BCV sincronizada (" + fmtBs(tasaBcv) + ")";
+        est.innerText = "✅ Tasa BCV actualizada (" + fmtBs(tasaBcv) + ")";
         est.style.color = "#22c55e";
         mostrar();
-      } else {
-        est.innerText = "⚠️ Modo manual activo (sin respuesta del BCV)";
+      } catch (e) {
+        est.innerText = "⚠️ Sin respuesta BCV en 4s: usa Fijar arriba";
         est.style.color = "#f59e0b";
       }
     }
