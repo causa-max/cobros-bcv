@@ -139,7 +139,7 @@
   </div>
   <div id="listaDeudas"></div>
             <script>
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
     let tabActual = 'cobrar';
     let cobros = JSON.parse(localStorage.getItem('deudas_bcv')) || [];
     let misDeudas = JSON.parse(localStorage.getItem('mis_deudas_bcv')) || [];
