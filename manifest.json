@@ -1,15 +1,8 @@
 {
   "name": "Mis Cobros BCV",
   "short_name": "Cobros BCV",
-  "start_url": "/cobros-bcv/index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a0a0a",
-  "theme_color": "#dc2626",
-  "icons": [
-    {
-      "src": "https://flaticon.com",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
+  "theme_color": "#dc2626"
 }
