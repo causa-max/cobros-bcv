@@ -1,0 +1,9 @@
+{
+  "name": "Cobros BCV - VIBRATODO",
+  "short_name": "Cobros BCV",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#dc2626"
+}
