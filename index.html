@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
   <title>Control de Cobros y Deudas BCV</title>
-  <link rel="manifest" href="manifest.json">
   <style>
     :root { --p: #dc2626; --d: #991b1b; --bg: #0a0a0a; --c: #141414; --t: #f5f5f5; }
     body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t); margin: 0; padding: 16px; }
@@ -139,7 +138,7 @@
   </div>
   <div id="listaDeudas"></div>
     <script>
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+    
     let tabActual = 'cobrar';
     let cobros = JSON.parse(localStorage.getItem('deudas_bcv')) || [];
     let misDeudas = JSON.parse(localStorage.getItem('mis_deudas_bcv')) || [];
